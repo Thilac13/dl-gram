@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>IG Private Parser</title>
+
+<!-- iOS standalone look -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAQAAACqG9+KAAAA..." />
+
+<style>
+  :root{ --blue:#007aff; --bg:#f7f7f9; --card:#fff; --txt:#111; --muted:#666; }
+  *{ box-sizing:border-box }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--txt) }
+  .app{ max-width:760px; margin:0 auto; padding:18px 16px 64px }
+  .header{ display:flex; align-items:center; justify-content:space-between; padding:8px 0 }
+  .title{ font-weight:800; font-size:20px }
+  .pill{ font-size:12px; color:#fff; background:var(--blue); padding:6px 10px; border-radius:999px }
+  .card{ background:var(--card); border-radius:18px; box-shadow:0 6px 24px rgba(0,0,0,.06); padding:14px; margin:12px 0 }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  input[type=text]{ flex:1; border:1px solid #ddd; border-radius:14px; padding:14px 12px; font-size:16px; background:#fff; }
+  textarea{ width:100%; min-height:160px; border:1px solid #ddd; border-radius:14px; padding:12px; font-size:14px; }
+  button{ border:none; border-radius:14px; padding:12px 14px; font-weight:700; background:var(--blue); color:#fff; }
+  .outline{ background:#fff; color:#111; border:1px solid #ddd }
+  .ghost{ background:#e9eefb; color:#0b3b9c }
+  .danger{ background:#f43f5e }
+  .muted{ color:var(--muted); font-size:13px }
+  .kicker{ font-size:13px; color:var(--muted); margin-top:6px }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px }
+  .cell{ background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 4px 14px rgba(0,0,0,.06) }
+  .thumb{ width:100%; height:200px; object-fit:cover; background:#eee }
+  .meta{ padding:10px; display:flex; justify-content:space-between; gap:8px; font-size:12px; color:#333 }
+  .tag{ font-size:11px; padding:2px 8px; border-radius:999px; background:#f0f2f6 }
+  .actions{ display:flex; gap:8px; padding:0 10px 12px; flex-wrap:wrap }
+  select{ border:1px solid #ddd; border-radius:12px; padding:10px 12px; background:#fff }
+  .toast{ position:fixed; left:50%; bottom:84px; transform:translateX(-50%); background:#111; color:#fff; padding:10px 14px; border-radius:12px; font-size:12px; display:none; z-index:10 }
+  .small{ font-size:12px }
+  code{ background:#f2f4f7; padding:2px 6px; border-radius:6px }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">IG Private Parser <span class="pill">Client-only</span></div>
+    <button class="ghost" id="btnA2HS">Add to Home</button>
+  </div>
+
+  <!-- STEP 1: Paste link, open it to view while logged in -->
+  <div class="card">
+    <div class="row">
+      <input id="link" type="text" autocapitalize="off" autocomplete="off" placeholder="Paste Instagram link (post / reel / story)" />
+      <button id="btnOpen">Open Link</button>
+    </div>
+    <div class="kicker">
+      1) Make sure you’re logged into Instagram in Safari. 2) Tap <b>Open Link</b> to open the page. 3) Use the <b>Bookmarklet</b> below on that page to grab HTML.
+    </div>
+  </div>
+
+  <!-- Bookmarklet generator -->
+  <div class="card">
+    <b>Bookmarklet (one-time setup)</b>
+    <div class="kicker">
+      Add a Safari bookmark named <b>IG Source</b>, then edit its URL with the code below. On any Instagram post/reel/story page, tap your bookmark → a new tab opens with the HTML. <br/>
+      <span class="small">Copy all text from that tab and paste it into the box below.</span>
+    </div>
+    <div style="margin-top:8px">
+      <textarea id="bmCode" readonly></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="outline" id="btnCopyBM">Copy Bookmarklet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Paste HTML -->
+  <div class="card">
+    <b>Paste Page HTML</b>
+    <textarea id="html" placeholder="Paste the entire HTML source from the Instagram page here…"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="btnParse">Parse</button>
+      <button class="outline" id="btnClear">Clear</button>
+    </div>
+    <div class="kicker">We will extract username, type, and media URLs (images/videos) from the HTML you provide.</div>
+  </div>
+
+  <!-- Filters & export -->
+  <div class="card">
+    <div class="row" style="gap:8px">
+      <select id="filterUser"><option value="">All users</option></select>
+      <select id="filterType">
+        <option value="">All types</option>
+        <option>Post</option><option>Reel</option><option>Story</option><option>Unknown</option>
+      </select>
+      <button class="outline" id="btnClearFilters">Clear Filters</button>
+      <button class="outline" id="btnExport">Export JSON</button>
+      <button class="outline" id="btnImport">Import</button>
+      <input id="importFile" type="file" accept="application/json" style="display:none" />
+      <button class="danger" id="btnWipe">Wipe Library</button>
+    </div>
+  </div>
+
+  <!-- Library/grid -->
+  <div class="card">
+    <div id="grid" class="grid"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ---------- Tiny helpers ---------- */
+const $ = s => document.querySelector(s);
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',1600); }
+
+/* ---------- Bookmarklet code ---------- */
+/* This bookmarklet opens a new tab containing a textarea prefilled with the current page HTML.
+   From the Instagram page: tap the bookmark → new tab appears → Select All → Copy → paste back here. */
+const BOOKMARKLET = `javascript:(function(){try{var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>IG HTML</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:12px}textarea{width:100%;height:80vh;border:1px solid #ddd;border-radius:12px;padding:10px;font-size:12px}button{padding:10px 12px;border-radius:10px;border:none;background:#007aff;color:#fff;margin:8px 0}</style></head><body><h3>Instagram Page HTML</h3><p>Long-press, Select All, Copy → paste into your app.</p><textarea id="tx"></textarea><br><button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById(\\'tx\\').value);this.textContent=\\'Copied!\\'">Copy to Clipboard</button><script>document.getElementById(\\'tx\\').value=document.documentElement.outerHTML;<\\/script></body></html>'; var w=window.open('about:blank','_blank'); w.document.open(); w.document.write(html); w.document.close();}catch(e){alert('Bookmarklet error: '+e.message)}})();`;
+$('#bmCode').value = BOOKMARKLET;
+$('#btnCopyBM').addEventListener('click', async ()=> {
+  await navigator.clipboard.writeText(BOOKMARKLET);
+  toast('Bookmarklet copied. Add it to a Safari bookmark’s URL.');
+});
+
+/* ---------- Local storage (metadata only) ---------- */
+const KEY='ig-private-parser-items';
+function loadAll(){ try{ return JSON.parse(localStorage.getItem(KEY)||'[]'); }catch{ return []; } }
+function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
+
+/* ---------- Type detection from URL ---------- */
+function categorise(url){
+  url = (url||'').split('?')[0];
+  if (url.includes('/reel/')) return 'Reel';
+  if (url.includes('/stories/')) return 'Story';
+  if (url.includes('/p/')) return 'Post';
+  return 'Unknown';
+}
+
+/* ---------- Parse username/media from HTML ---------- */
+function parseFromHTML(html, sourceURL){
+  const type = categorise(sourceURL||'');
+
+  // OG tags
+  const og = {};
+  html.replace(/<meta\s+(?:property|name)\s*=\s*"(og:[^"]+)"\s+content\s*=\s*"([^"]*)"\s*\/?>/ig, (_,k,v)=>{ og[k]=v; return ''; });
+
+  // Username (multiple fallbacks)
+  let username = match1(html, /"owner"\s*:\s*{[^}]*"username"\s*:\s*"([^"]+)"/);
+  if(!username) username = match1(html, /"alternateName"\s*:\s*"@([^"]+)"/); // ld+json
+  if(!username){ const t = og['og:title']||''; const m = t.match(/^([^ ]+)\s+on Instagram/i); if(m) username = m[1]; }
+  if(!username) username = match1(html, /"author_username"\s*:\s*"([^"]+)"/) || 'unknown';
+
+  const title = og['og:title'] || '';
+
+  // Media candidates
+  const urls = new Set();
+  const media = [];
+
+  const pushMedia = (u, ctGuess) => {
+    if (!u) return;
+    u = unescapeSlash(u);
+    if (urls.has(u)) return;
+    urls.add(u);
+    const lower = u.toLowerCase();
+    const ct = ctGuess || (lower.endsWith('.mp4') ? 'video/mp4'
+                   : (lower.endsWith('.jpg')||lower.endsWith('.jpeg')) ? 'image/jpeg'
+                   : lower.endsWith('.png') ? 'image/png'
+                   : lower.endsWith('.webp') ? 'image/webp' : '');
+    media.push({ url: u, contentType: ct });
+  };
+
+  // from og tags
+  pushMedia(og['og:video'] || og['og:video:secure_url'], 'video/mp4');
+  pushMedia(og['og:image'] || og['og:image:secure_url'], 'image/jpeg');
+
+  // from JSON blobs inside HTML
+  pushMedia(match1(html, /"video_url"\s*:\s*"([^"]+)"/), 'video/mp4');
+  pushMedia(match1(html, /"display_url"\s*:\s*"([^"]+)"/), 'image/jpeg');
+
+  // also pick any obvious CDN assets (best-effort)
+  const cdnMatches = html.match(/https?:\/\/[^"'\\s]+(?:\.mp4|\.jpg|\.jpeg|\.png|\.webp)/ig) || [];
+  cdnMatches.forEach(u=>pushMedia(u));
+
+  return { type, username, title, media };
+}
+function match1(s,re){ const m = s.match(re); return m ? m[1] : null; }
+function unescapeSlash(s){ return s.replace(/\\u0026/g,'&').replace(/\\\//g,'/'); }
+
+/* ---------- UI: Open link, Parse, Render ---------- */
+$('#btnOpen').addEventListener('click', ()=>{
+  const link = $('#link').value.trim();
+  if(!link) return toast('Paste an Instagram link first');
+  window.open(link, '_blank');
+});
+
+$('#btnClear').addEventListener('click', ()=> $('#html').value='');
+
+$('#btnParse').addEventListener('click', ()=>{
+  const html = $('#html').value;
+  if(!html) return toast('Paste the page HTML first');
+  const src = $('#link').value.trim();
+  const info = parseFromHTML(html, src);
+  if (!info.media || info.media.length===0){
+    toast('No media found. Make sure you copied the full HTML.');
+    return;
+  }
+  // Save each media URL as an item
+  const all = loadAll();
+  info.media.forEach((m, idx)=>{
+    const id = `${info.username}_${Date.now()}_${idx}`;
+    all.unshift({
+      id,
+      username: info.username,
+      type: info.type,
+      source: src || 'unknown',
+      title: info.title || '',
+      mediaUrl: m.url,
+      contentType: m.contentType || '',
+      savedAt: new Date().toISOString()
+    });
+  });
+  saveAll(all);
+  $('#html').value=''; // clear textarea
+  refreshGrid();
+  toast('Saved');
+});
+
+/* ---------- Grid, filters, export/import ---------- */
+$('#btnClearFilters').addEventListener('click', ()=>{ $('#filterUser').value=''; $('#filterType').value=''; refreshGrid(); });
+$('#filterUser').addEventListener('change', refreshGrid);
+$('#filterType').addEventListener('change', refreshGrid);
+
+$('#btnExport').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(loadAll(),null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`ig-library-${Date.now()}.json`; a.click();
+  URL.revokeObjectURL(url);
+});
+$('#btnImport').addEventListener('click', ()=> $('#importFile').click());
+$('#importFile').addEventListener('change', async (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  const text = await f.text();
+  try{
+    const arr = JSON.parse(text);
+    const all = loadAll();
+    arr.forEach(x=>all.unshift(x));
+    saveAll(all);
+    refreshGrid();
+    toast('Imported');
+  }catch(e){ toast('Invalid JSON'); }
+});
+$('#btnWipe').addEventListener('click', ()=>{
+  if(!confirm('Delete your local library from this device?')) return;
+  localStorage.removeItem(KEY);
+  refreshGrid();
+  toast('Library wiped');
+});
+
+function refreshGrid(){
+  const all = loadAll();
+  // populate user filter
+  const users = Array.from(new Set(all.map(x=>x.username))).sort();
+  const sel = $('#filterUser');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">All users</option>' + users.map(u=>`<option>${u}</option>`).join('');
+  if (users.includes(keep)) sel.value = keep;
+
+  // filter & sort
+  const uf = $('#filterUser').value;
+  const tf = $('#filterType').value;
+  const list = all
+    .filter(x=>!uf || x.username===uf)
+    .filter(x=>!tf || x.type===tf)
+    .sort((a,b)=> new Date(b.savedAt)-new Date(a.savedAt));
+
+  const grid = $('#grid'); grid.innerHTML='';
+  list.forEach(item=>{
+    const cell = document.createElement('div');
+    cell.className='cell';
+
+    // Simple preview via direct URL (cross-origin display is fine)
+    let mediaHTML='';
+    const ct = (item.contentType||'').toLowerCase();
+    if (ct.startsWith('image/') || /\.(jpg|jpeg|png|webp)(\?|$)/i.test(item.mediaUrl)){
+      mediaHTML = `<img class="thumb" src="${item.mediaUrl}" alt="">`;
+    } else if (ct.startsWith('video/') || /\.mp4(\?|$)/i.test(item.mediaUrl)){
+      mediaHTML = `<video class="thumb" src="${item.mediaUrl}" playsinline muted loop></video>`;
+    } else {
+      mediaHTML = `<div class="thumb"></div>`;
+    }
+
+    cell.innerHTML = `
+      ${mediaHTML}
+      <div class="meta">
+        <span>@${item.username}</span>
+        <span class="tag">${item.type||'Unknown'}</span>
+      </div>
+      <div class="actions">
+        <a class="outline" href="${item.mediaUrl}" target="_blank" rel="noopener">Open</a>
+        <a class="outline" href="${item.mediaUrl}" download>Download</a>
+        <button class="danger" data-id="${item.id}">Delete</button>
+      </div>
+      <div class="muted" style="padding:0 10px 12px; word-break:break-all">${item.source || ''}</div>
+    `;
+    grid.appendChild(cell);
+
+    cell.querySelector('button[data-id]').addEventListener('click', ()=>{
+      const id = item.id;
+      const all = loadAll().filter(x=>x.id!==id);
+      saveAll(all);
+      refreshGrid();
+    });
+  });
+}
+refreshGrid();
+
+/* ---------- Add to Home (hint for iOS) ---------- */
+$('#btnA2HS').addEventListener('click', ()=> toast('Use Share → Add to Home Screen'));
+
+/* ---------- Quality-of-life: auto-detect type from link input ---------- */
+$('#link').addEventListener('input', ()=>{
+  const type = categorise($('#link').value.trim());
+  if (type && type!=='Unknown') $('#link').style.borderColor = '#b7e0ff';
+  else $('#link').style.borderColor = '#ddd';
+});
+</script>
+</body>
+</html>
